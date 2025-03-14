@@ -20,26 +20,36 @@ class DailyOddsCollector {
         this.collector = new OddsCollector();
     }
     async initialize() {
-        try {
-            this.browser = await chromium.launch({
-                headless: true,
-                executablePath: process.env.CHROME_BIN || undefined, // nullをundefinedに変更
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--disable-software-rasterizer'
-                ]
-            });
-            await this.collector.initialize();
-            this.lastBrowserReset = new Date();
-            console.log('Browser initialized successfully at:', this.lastBrowserReset.toISOString());
-        }
-        catch (error) {
-            console.error('Failed to initialize browser:', error);
-            throw error;
-        }
+        this.browser = await chromium.launch({
+            headless: true,
+            executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH ? undefined : '/app/.chrome-for-testing/chrome-linux64/chrome',
+            args: [
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-setuid-sandbox',
+                '--no-sandbox',
+                '--no-zygote',
+                '--single-process',
+                '--disable-extensions',
+                '--disable-accelerated-2d-canvas',
+                '--disable-accelerated-jpeg-decoding',
+                '--disable-accelerated-mjpeg-decode',
+                '--disable-accelerated-video-decode',
+                '--disable-background-networking',
+                '--disable-background-timer-throttling',
+                '--disable-breakpad',
+                '--disable-component-extensions-with-background-pages',
+                '--disable-default-apps',
+                '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                '--disable-ipc-flooding-protection',
+                '--disable-notifications',
+                '--disable-renderer-backgrounding',
+                '--mute-audio'
+            ]
+        });
+        await this.collector.initialize();
+        this.lastBrowserReset = new Date();
+        console.log('Browser initialized successfully at:', this.lastBrowserReset.toISOString());
     }
     // ブラウザを再初期化する関数
     async resetBrowser() {
@@ -48,6 +58,16 @@ class DailyOddsCollector {
             // 既存のブラウザをクリーンアップ
             if (this.browser) {
                 try {
+                    // すべてのコンテキストを閉じる
+                    const contexts = this.browser.contexts();
+                    for (const context of contexts) {
+                        try {
+                            await context.close();
+                        }
+                        catch (error) {
+                            console.error('Error closing browser context during reset:', error);
+                        }
+                    }
                     await this.browser.close();
                 }
                 catch (error) {
@@ -62,19 +82,47 @@ class DailyOddsCollector {
             // 新しいブラウザを初期化
             this.browser = await chromium.launch({
                 headless: true,
-                executablePath: process.env.CHROME_BIN || undefined,
+                executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH ? undefined : '/app/.chrome-for-testing/chrome-linux64/chrome',
                 args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
-                    '--disable-software-rasterizer'
+                    '--disable-setuid-sandbox',
+                    '--no-sandbox',
+                    '--no-zygote',
+                    '--single-process',
+                    '--disable-extensions',
+                    '--disable-accelerated-2d-canvas',
+                    '--disable-accelerated-jpeg-decoding',
+                    '--disable-accelerated-mjpeg-decode',
+                    '--disable-accelerated-video-decode',
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-breakpad',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-default-apps',
+                    '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-notifications',
+                    '--disable-renderer-backgrounding',
+                    '--mute-audio'
                 ]
             });
             // コレクターを再初期化
             await this.collector.initialize();
             this.lastBrowserReset = new Date();
             console.log('Browser reset successfully at:', this.lastBrowserReset.toISOString());
+            // メモリ使用量を出力
+            const memoryUsage = process.memoryUsage();
+            console.log('Memory usage after browser reset:', {
+                rss: `${Math.round(memoryUsage.rss / 1024 / 1024)} MB`,
+                heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)} MB`,
+                heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`,
+                external: `${Math.round(memoryUsage.external / 1024 / 1024)} MB`
+            });
+            // 明示的にガベージコレクションを促す
+            if (global.gc) {
+                global.gc();
+            }
             return true;
         }
         catch (error) {
@@ -577,20 +625,23 @@ class DailyOddsCollector {
                                 this.logWithTimestamp('info', `Final ${betType} odds data saved successfully`);
                                 break;
                             }
+                            try { }
+                            catch (error) {
+                                // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
+                                if (error.name === 'TimeoutError') {
+                                    this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
+                                    break; // このベットタイプのリトライを中止
+                                }
+                                this.logWithTimestamp('error', `Error collecting final ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
+                                if (retryCount === this.MAX_RETRIES - 1) {
+                                    this.logWithTimestamp('error', `Max retries exceeded for final ${betType} odds collection`);
+                                    break;
+                                }
+                                retryCount++;
+                                await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+                            }
                         }
-                        catch (error) {
-                            // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
-                            if (error.name === 'TimeoutError') {
-                                this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
-                                break; // このベットタイプのリトライを中止
-                            }
-                            this.logWithTimestamp('error', `Error collecting final ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
-                            if (retryCount === this.MAX_RETRIES - 1) {
-                                this.logWithTimestamp('error', `Max retries exceeded for final ${betType} odds collection`);
-                                break;
-                            }
-                            retryCount++;
-                            await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+                        finally {
                         }
                     }
                 }
@@ -620,20 +671,23 @@ class DailyOddsCollector {
                             this.logWithTimestamp('info', `${betType} odds data saved successfully`);
                             break;
                         }
+                        try { }
+                        catch (error) {
+                            // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
+                            if (error.name === 'TimeoutError') {
+                                this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
+                                break; // このベットタイプのリトライを中止
+                            }
+                            this.logWithTimestamp('error', `Error collecting ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
+                            if (retryCount === this.MAX_RETRIES - 1) {
+                                this.logWithTimestamp('error', `Max retries exceeded for ${betType} odds collection`);
+                                break;
+                            }
+                            retryCount++;
+                            await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+                        }
                     }
-                    catch (error) {
-                        // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
-                        if (error.name === 'TimeoutError') {
-                            this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
-                            break; // このベットタイプのリトライを中止
-                        }
-                        this.logWithTimestamp('error', `Error collecting ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
-                        if (retryCount === this.MAX_RETRIES - 1) {
-                            this.logWithTimestamp('error', `Max retries exceeded for ${betType} odds collection`);
-                            break;
-                        }
-                        retryCount++;
-                        await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+                    finally {
                     }
                 }
             }

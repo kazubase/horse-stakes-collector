@@ -7,7 +7,7 @@
     "start": "tsx src/db/daily-odds-collector.ts",
     "dev": "tsx --watch src/db/daily-odds-collector.ts",
     "build": "tsc",
-    "heroku-postbuild": "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium"
+    "heroku-postbuild": "PLAYWRIGHT_SKIP_CHROMIUM_DOWNLOAD=false PLAYWRIGHT_SKIP_FIREFOX_DOWNLOAD=true PLAYWRIGHT_SKIP_WEBKIT_DOWNLOAD=true npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

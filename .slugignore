@@ -1,22 +1,49 @@
 # テストファイル
 **/*.test.ts
 **/*.spec.ts
+**/*.test.js
+**/*.spec.js
+**/__tests__/
+**/test/
+**/tests/
 
 # ドキュメント
 *.md
+*.txt
 docs/
+documentation/
+examples/
+sample/
+LICENSE
 
 # 開発用設定ファイル
 .vscode/
+.idea/
 .git/
+.github/
 .gitignore
+.eslintrc*
+.prettier*
+.editorconfig
+tsconfig.json
+tsconfig.*.json
+jest.config.*
+babel.config.*
 
-# ソースマップ
+# ソースマップとソースファイル（ビルド後は不要）
 **/*.map
+**/*.ts
+!**/*.d.ts
+src/
 
 # Playwrightの不要なブラウザ
-.cache/ms-playwright/*
-!.cache/ms-playwright/chromium-*
+node_modules/playwright-core/.local-browsers/
+node_modules/playwright-core/.local-browsers/firefox-*
+node_modules/playwright-core/.local-browsers/webkit-*
+node_modules/playwright/.local-browsers/
+node_modules/playwright-core/lib/server/chromium/
+node_modules/playwright-core/lib/server/firefox/
+node_modules/playwright-core/lib/server/webkit/
 
 # Herokuの一時ファイル
 .heroku/
@@ -41,4 +68,23 @@ node_modules/**/test/
 node_modules/**/tests/
 node_modules/**/docs/
 node_modules/**/*.md
-node_modules/**/*.map 
+node_modules/**/*.map
+node_modules/**/*.ts
+!node_modules/**/*.d.ts
+node_modules/**/*.flow
+node_modules/**/LICENSE
+node_modules/**/license
+node_modules/**/README
+node_modules/**/readme
+node_modules/**/.git/
+node_modules/**/.github/
+node_modules/**/example/
+node_modules/**/examples/
+
+# デバッグ関連
+**/*.log
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log* 

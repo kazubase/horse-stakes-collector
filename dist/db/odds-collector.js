@@ -57,7 +57,30 @@ export class OddsCollector {
     }
     async initialize() {
         this.browser = await chromium.launch({
-            headless: true // デバッグ用にheadlessをfalseに設定
+            headless: true,
+            args: [
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-setuid-sandbox',
+                '--no-sandbox',
+                '--no-zygote',
+                '--single-process',
+                '--disable-extensions',
+                '--disable-accelerated-2d-canvas',
+                '--disable-accelerated-jpeg-decoding',
+                '--disable-accelerated-mjpeg-decode',
+                '--disable-accelerated-video-decode',
+                '--disable-background-networking',
+                '--disable-background-timer-throttling',
+                '--disable-breakpad',
+                '--disable-component-extensions-with-background-pages',
+                '--disable-default-apps',
+                '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                '--disable-ipc-flooding-protection',
+                '--disable-notifications',
+                '--disable-renderer-backgrounding',
+                '--mute-audio'
+            ]
         });
     }
     async collectOddsForBetType(raceId, betType, pastRaceUrl) {
