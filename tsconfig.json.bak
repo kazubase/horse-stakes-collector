@@ -1,0 +1,25 @@
+{
+  "include": ["client/src/**/*", "db/**/*", "server/**/*"],
+  "exclude": ["node_modules", "build", "**/*.test.ts"],
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "noEmit": false,
+    "outDir": "./dist",
+    "module": "ESNext",
+    "strict": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": false,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@db": ["./db/index.ts"],
+      "@db/*": ["./db/*"],
+      "@/*": ["./client/src/*"]
+    }
+  }
+}

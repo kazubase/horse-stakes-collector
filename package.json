@@ -1,0 +1,33 @@
+{
+  "name": "horse-stakes-collector",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "start": "tsx src/db/daily-odds-collector.ts",
+    "dev": "tsx --watch src/db/daily-odds-collector.ts",
+    "build": "tsc",
+    "heroku-postbuild": "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "cheerio": "^1.0.0",
+    "date-fns": "^3.6.0",
+    "dotenv": "^16.4.7",
+    "drizzle-kit": "^0.30.1",
+    "drizzle-orm": "^0.38.3",
+    "node-schedule": "^2.1.1",
+    "playwright": "^1.49.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.0.2",
+    "ws": "^8.18.1"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "devDependencies": {
+    "@types/node-schedule": "^2.1.7",
+    "@types/ws": "^8.18.0",
+    "drizzle-zod": "^0.7.0"
+  }
+}

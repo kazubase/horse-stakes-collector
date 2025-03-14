@@ -1,0 +1,12 @@
+node_modules
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+.env
+.env.local
+# Logs
+/logs/
+/logs/*.log
+/logs/*.log.*
+*.log
