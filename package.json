@@ -4,7 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "start": "node -e \"const fs=require('fs'); const path='src/db/daily-odds-collector.ts'; console.log('Checking file:', path); try { if(fs.existsSync(path)) { console.log('File exists!'); require('tsx').run(path); } else { console.log('File does not exist!'); console.log('Current directory:', process.cwd()); console.log('Files in current directory:', fs.readdirSync('.').join('\\n')); if(fs.existsSync('src')) { console.log('Files in src:', fs.readdirSync('src').join('\\n')); if(fs.existsSync('src/db')) { console.log('Files in src/db:', fs.readdirSync('src/db').join('\\n')); } else { console.log('src/db directory does not exist!'); } } else { console.log('src directory does not exist!'); } } } catch(e) { console.error('Error:', e); }\"",
+    "start": "npx tsx src/db/daily-odds-collector.ts",
     "dev": "tsx --watch src/db/daily-odds-collector.ts",
     "build": "echo 'Skipping tsc build'",
     "heroku-postbuild": "PLAYWRIGHT_SKIP_CHROMIUM_DOWNLOAD=false PLAYWRIGHT_SKIP_FIREFOX_DOWNLOAD=true PLAYWRIGHT_SKIP_WEBKIT_DOWNLOAD=true npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium",
