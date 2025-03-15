@@ -4,11 +4,11 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "start": "npx tsx src/db/daily-odds-collector.ts",
+    "start": "node dist/db/daily-odds-collector.js",
     "dev": "tsx --watch src/db/daily-odds-collector.ts",
-    "build": "echo 'Skipping tsc build'",
-    "heroku-postbuild": "PLAYWRIGHT_SKIP_CHROMIUM_DOWNLOAD=false PLAYWRIGHT_SKIP_FIREFOX_DOWNLOAD=true PLAYWRIGHT_SKIP_WEBKIT_DOWNLOAD=true npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium",
-    "postinstall": "echo 'Skipping build step'"
+    "build": "tsc",
+    "heroku-postbuild": "PLAYWRIGHT_SKIP_CHROMIUM_DOWNLOAD=false PLAYWRIGHT_SKIP_FIREFOX_DOWNLOAD=true PLAYWRIGHT_SKIP_WEBKIT_DOWNLOAD=true npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium && npm run build",
+    "postinstall": "npm run build"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
