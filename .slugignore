@@ -32,9 +32,6 @@ babel.config.*
 
 # ソースマップとソースファイル（ビルド後は不要）
 **/*.map
-**/*.ts
-!**/*.d.ts
-src/
 
 # Playwrightの不要なブラウザ
 node_modules/playwright-core/.local-browsers/
