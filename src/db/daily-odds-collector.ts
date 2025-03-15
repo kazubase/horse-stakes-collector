@@ -449,7 +449,7 @@ class DailyOddsCollector {
         // 2. 前日の19:00 JSTを設定
         const collectionStartTimeJST = new Date(raceStartTimeJST);
         collectionStartTimeJST.setDate(collectionStartTimeJST.getDate() - 1);
-        collectionStartTimeJST.setHours(19, 0, 0, 0);
+        collectionStartTimeJST.setHours(10, 0, 0, 0); // 19:00から10:00に変更
         console.log('Debug - collectionStartTimeJST:', collectionStartTimeJST.toISOString());
         
         // 3. JSTからUTCに変換
