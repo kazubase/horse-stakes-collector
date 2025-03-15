@@ -42,11 +42,15 @@ class DailyOddsCollector {
         const path = await import('path');
         const { execSync } = await import('child_process');
         
-        // 複数の可能性のあるパスをチェック
+        // Heroku環境でのChromiumパスを確認
         const possiblePaths = [
+          // Puppeteerビルドパックが提供するパス
+          '/app/.apt/opt/google/chrome/chrome',
+          '/app/.apt/usr/bin/google-chrome-stable',
+          '/app/.heroku/google-chrome/bin/chrome',
+          // Playwrightがインストールする可能性のあるパス
           '/app/.cache/ms-playwright/chromium-1148/chrome-linux/chrome',
           '/app/.cache/ms-playwright/chromium_headless_shell-1148/chrome-linux/headless_shell',
-          '/app/.cache/ms-playwright/chromium-1148/chrome-linux/chrome',
           '/app/node_modules/.cache/ms-playwright/chromium-1148/chrome-linux/chrome'
         ];
         
@@ -56,28 +60,61 @@ class DailyOddsCollector {
           if (fs.existsSync(chromePath)) {
             console.log('Browser executable found at:', chromePath);
             browserExists = true;
-            process.env.CHROME_BIN = chromePath; // 見つかったパスを環境変数に設定
+            process.env.CHROME_BIN = chromePath;
             break;
           }
         }
         
         if (!browserExists) {
           console.log('Browser executable not found, attempting to install...');
-          // 複数のインストールコマンドを試す
           try {
-            execSync('PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium', { stdio: 'inherit' });
+            // Puppeteerビルドパックが提供するChromiumを探す
+            const chromePaths = execSync('find /app -name "chrome" -type f 2>/dev/null || true', { encoding: 'utf8' });
+            console.log('Found Chrome paths:', chromePaths);
+            
+            const chromePathLines = chromePaths.split('\n').filter(Boolean);
+            if (chromePathLines.length > 0) {
+              process.env.CHROME_BIN = chromePathLines[0];
+              console.log('Using Chrome at:', process.env.CHROME_BIN);
+              browserExists = true;
+            } else {
+              // Chromiumをインストール
+              execSync('PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium', { stdio: 'inherit' });
+              console.log('Browser installation completed');
+            }
           } catch (e) {
-            console.log('First install attempt failed, trying alternative method...');
-            execSync('npx playwright install chromium', { stdio: 'inherit' });
+            console.log('Error during Chrome search or installation:', e);
+            // 最後の手段としてPlaywrightのブラウザをインストール
+            try {
+              execSync('npx playwright install chromium', { stdio: 'inherit' });
+              console.log('Alternative browser installation completed');
+            } catch (altError) {
+              console.log('Alternative installation also failed:', altError);
+            }
           }
-          console.log('Browser installation completed');
           
           // インストール後に再度パスをチェック
           for (const chromePath of possiblePaths) {
             if (fs.existsSync(chromePath)) {
               console.log('After installation, browser found at:', chromePath);
               process.env.CHROME_BIN = chromePath;
+              browserExists = true;
               break;
+            }
+          }
+          
+          // それでも見つからない場合は、システム全体を検索
+          if (!browserExists) {
+            try {
+              const chromePaths = execSync('find /app -name "chrome" -type f 2>/dev/null || true', { encoding: 'utf8' });
+              const chromePathLines = chromePaths.split('\n').filter(Boolean);
+              if (chromePathLines.length > 0) {
+                process.env.CHROME_BIN = chromePathLines[0];
+                console.log('Found Chrome after system search at:', process.env.CHROME_BIN);
+                browserExists = true;
+              }
+            } catch (e) {
+              console.log('System search failed:', e);
             }
           }
         }
@@ -85,15 +122,12 @@ class DailyOddsCollector {
         console.warn('Failed to check/install browser:', installError);
       }
       
-      // Puppeteerビルドパックが提供するChromiumを使用するフォールバック
-      if (!process.env.CHROME_BIN) {
-        process.env.CHROME_BIN = process.env.PUPPETEER_EXECUTABLE_PATH || '/app/.apt/usr/bin/google-chrome';
-        console.log('Using fallback Chrome path:', process.env.CHROME_BIN);
-      }
+      // ブラウザパスが設定されていない場合、Playwrightにデフォルトを使用させる
+      console.log('Final Chrome path:', process.env.CHROME_BIN || 'Using Playwright default');
       
       this.browser = await chromium.launch({ 
         headless: true,
-        executablePath: process.env.CHROME_BIN,
+        executablePath: process.env.CHROME_BIN || undefined,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
