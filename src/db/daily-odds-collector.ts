@@ -408,7 +408,7 @@ class DailyOddsCollector {
     
       // タイムゾーン処理を一貫化
       // 日本時間（JST）での処理を明示的に行う
-      const JST_OFFSET = 9 * 60; // 日本時間は UTC+9 (分単位)
+      const JST_OFFSET = 9 * 60 * 60 * 1000; // 日本時間は UTC+9 (ミリ秒単位)
       
       // レース開始時刻をJST（日本時間）として解釈
       const raceStartTimeJST = new Date(race.startTime);
@@ -416,13 +416,15 @@ class DailyOddsCollector {
       // 収集開始時刻の設定（重賞レースの場合）
       let collectionStartTime: Date | null = null;
       if (race.isGrade) {
-        // 重賞レースの場合、前日10:00 JSTから収集開始
+        // 重賞レースの場合、前日19:00 JSTから収集開始（日本時間で前日の19時）
         const collectionStartTimeJST = new Date(raceStartTimeJST);
         collectionStartTimeJST.setDate(collectionStartTimeJST.getDate() - 1);
-        collectionStartTimeJST.setHours(10, 0, 0, 0);
-        collectionStartTime = collectionStartTimeJST;
+        collectionStartTimeJST.setHours(19, 0, 0, 0);
         
-        // UTC時間をJST表示に変換
+        // JSTからUTCに変換（実際の比較に使用するため）
+        collectionStartTime = new Date(collectionStartTimeJST.getTime() - JST_OFFSET);
+        
+        // UTC時間をJST表示に変換（ログ表示用）
         const jstCollectionStartTime = this.formatJSTTime(collectionStartTime);
         this.logWithTimestamp('info', 
           `Race ${race.id} is grade. Collection will start at ${jstCollectionStartTime} (JST)`
@@ -532,6 +534,13 @@ class DailyOddsCollector {
       if (!race.isGrade || (collectionStartTime && now >= collectionStartTime)) {
         this.logWithTimestamp('info', `Initial collection for race ${race.id}`);
         await this.collectOdds(race.id);
+      } else if (race.isGrade && collectionStartTime) {
+        // 収集開始時刻に達していない場合、次の収集時刻をログに出力
+        const jstNow = this.formatJSTTime(now);
+        const jstCollectionStart = this.formatJSTTime(collectionStartTime);
+        this.logWithTimestamp('info', 
+          `Race ${race.id} is grade. Initial collection skipped. Will start at ${jstCollectionStart} (JST). Current: ${jstNow} (JST)`
+        );
       }
       
       return true;
@@ -751,27 +760,37 @@ class DailyOddsCollector {
               const odds = await this.collector.collectOddsForBetType(raceId, betType);
               
               if (odds.length > 0) {
-                if (betType === 'tanpuku') {
-                  await this.handleTanpukuOdds(raceId, odds);
-                } else {
-                  await this.handleOtherOdds(betType, odds);
+                try {
+                  if (betType === 'tanpuku') {
+                    await this.handleTanpukuOdds(raceId, odds);
+                  } else {
+                    await this.handleOtherOdds(betType, odds);
+                  }
+                  this.logWithTimestamp('info', `Final ${betType} odds data saved successfully`);
+                  break;
+                } catch (error: any) {
+                  // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
+                  if (error.name === 'TimeoutError') {
+                    this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
+                    break; // このベットタイプのリトライを中止
+                  }
+                  
+                  this.logWithTimestamp('error', `Error collecting final ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
+                  if (retryCount === this.MAX_RETRIES - 1) {
+                    this.logWithTimestamp('error', `Max retries exceeded for final ${betType} odds collection`);
+                    break;
+                  }
+                  retryCount++;
+                  await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
                 }
-                this.logWithTimestamp('info', `Final ${betType} odds data saved successfully`);
-                break;
               }
             } catch (error: any) {
-              // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
-              if (error.name === 'TimeoutError') {
-                this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
-                break; // このベットタイプのリトライを中止
-              }
-              
-              this.logWithTimestamp('error', `Error collecting final ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
-              if (retryCount === this.MAX_RETRIES - 1) {
-                this.logWithTimestamp('error', `Max retries exceeded for final ${betType} odds collection`);
+              this.logWithTimestamp('error', `Error in collectOddsForBetType for race ${raceId}, bet type ${betType}:`, error);
+              retryCount++;
+              if (retryCount >= this.MAX_RETRIES) {
+                this.logWithTimestamp('error', `Max retries exceeded for ${betType} odds collection`);
                 break;
               }
-              retryCount++;
               await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
             }
           }
@@ -799,27 +818,37 @@ class DailyOddsCollector {
             const odds = await this.collector.collectOddsForBetType(raceId, betType);
             
             if (odds.length > 0) {
-              if (betType === 'tanpuku') {
-                await this.handleTanpukuOdds(raceId, odds);
-              } else {
-                await this.handleOtherOdds(betType, odds);
+              try {
+                if (betType === 'tanpuku') {
+                  await this.handleTanpukuOdds(raceId, odds);
+                } else {
+                  await this.handleOtherOdds(betType, odds);
+                }
+                this.logWithTimestamp('info', `${betType} odds data saved successfully`);
+                break;
+              } catch (error: any) {
+                // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
+                if (error.name === 'TimeoutError') {
+                  this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
+                  break; // このベットタイプのリトライを中止
+                }
+                
+                this.logWithTimestamp('error', `Error collecting ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
+                if (retryCount === this.MAX_RETRIES - 1) {
+                  this.logWithTimestamp('error', `Max retries exceeded for ${betType} odds collection`);
+                  break;
+                }
+                retryCount++;
+                await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
               }
-              this.logWithTimestamp('info', `${betType} odds data saved successfully`);
-              break;
             }
           } catch (error: any) {
-            // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
-            if (error.name === 'TimeoutError') {
-              this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
-              break; // このベットタイプのリトライを中止
-            }
-            
-            this.logWithTimestamp('error', `Error collecting ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
-            if (retryCount === this.MAX_RETRIES - 1) {
+            this.logWithTimestamp('error', `Error in collectOddsForBetType for race ${raceId}, bet type ${betType}:`, error);
+            retryCount++;
+            if (retryCount >= this.MAX_RETRIES) {
               this.logWithTimestamp('error', `Max retries exceeded for ${betType} odds collection`);
               break;
             }
-            retryCount++;
             await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
           }
         }
