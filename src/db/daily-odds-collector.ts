@@ -35,6 +35,44 @@ class DailyOddsCollector {
 
   async initialize() {
     try {
+      // ブラウザが見つからない場合に備えて、インストールを試みる
+      try {
+        console.log('Checking for Playwright browser installation...');
+        const fs = await import('fs');
+        const path = await import('path');
+        const browserPath = process.env.PLAYWRIGHT_BROWSERS_PATH === '0' 
+          ? path.join(process.cwd(), 'node_modules', 'playwright-core', '.local-browsers')
+          : process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(process.cwd(), '.cache', 'ms-playwright');
+        
+        console.log('Browser path:', browserPath);
+        
+        // 実行ファイルの存在確認（複数の可能性のあるパスをチェック）
+        const possiblePaths = [
+          path.join(browserPath, 'chromium-1148', 'chrome-linux', 'chrome'),
+          path.join(browserPath, 'chromium_headless_shell-1148', 'chrome-linux', 'headless_shell'),
+          '/app/.cache/ms-playwright/chromium-1148/chrome-linux/chrome',
+          '/app/.cache/ms-playwright/chromium_headless_shell-1148/chrome-linux/headless_shell'
+        ];
+        
+        let browserExists = false;
+        for (const chromiumPath of possiblePaths) {
+          if (fs.existsSync(chromiumPath)) {
+            console.log('Browser executable found at:', chromiumPath);
+            browserExists = true;
+            break;
+          }
+        }
+        
+        if (!browserExists) {
+          console.log('Browser executable not found, attempting to install...');
+          const { execSync } = await import('child_process');
+          execSync('PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium', { stdio: 'inherit' });
+          console.log('Browser installation completed');
+        }
+      } catch (installError) {
+        console.warn('Failed to check/install browser:', installError);
+      }
+      
       this.browser = await chromium.launch({ 
         headless: true,
         executablePath: process.env.CHROME_BIN || undefined,  // nullをundefinedに変更
