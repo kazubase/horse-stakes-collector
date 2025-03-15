@@ -1,4 +1,6 @@
 {
+  "include": ["db/**/*", "server/**/*", "src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"],
   "compilerOptions": {
     "target": "ES2020",
     "module": "NodeNext",
@@ -6,9 +8,13 @@
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "typeRoots": ["./node_modules/@types", "./src/@types"]
-  },
-  "include": ["src/**/*"]
+    "outDir": "./dist",
+    "allowImportingTsExtensions": false,
+    "baseUrl": ".",
+    "types": ["node", "node-schedule"],
+    "paths": {
+      "@db": ["./db/index.ts"],
+      "@db/*": ["./db/*"]
+    }
+  }
 }
