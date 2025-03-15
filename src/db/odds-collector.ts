@@ -100,6 +100,9 @@ const BATCH_SIZES = {
 
 export class OddsCollector {
   private browser: Browser | null = null;
+  private contextPool: Array<{ context: any, inUse: boolean, lastUsed: Date }> = [];
+  private readonly MAX_CONTEXTS = 5; // 最大コンテキスト数
+  private readonly CONTEXT_TIMEOUT = 10 * 60 * 1000; // 10分間使用されていないコンテキストは閉じる
   
   private betTypes: { [key: string]: BetTypeConfig } = {
     tanpuku: {
@@ -161,10 +164,87 @@ export class OddsCollector {
           ]
         });
       }
-      // 残りの初期化コード...
+      
+      // コンテキストプールをクリア
+      this.contextPool = [];
+      
+      // 古いコンテキストを定期的にクリーンアップするタイマーを設定
+      setInterval(() => this.cleanupUnusedContexts(), 60000); // 1分ごとにチェック
+      
+      console.log('OddsCollector initialized successfully');
     } catch (error) {
       console.error('Failed to initialize OddsCollector:', error);
       throw error;
+    }
+  }
+
+  // 未使用のコンテキストをクリーンアップ
+  private async cleanupUnusedContexts() {
+    const now = new Date();
+    const newPool = [];
+    
+    for (const item of this.contextPool) {
+      if (!item.inUse && now.getTime() - item.lastUsed.getTime() > this.CONTEXT_TIMEOUT) {
+        try {
+          await item.context.close();
+          console.log('Closed unused browser context');
+        } catch (error) {
+          console.error('Error closing unused context:', error);
+        }
+      } else {
+        newPool.push(item);
+      }
+    }
+    
+    this.contextPool = newPool;
+  }
+  
+  // コンテキストプールからコンテキストを取得または新規作成
+  private async getContext(): Promise<any> {
+    // 未使用のコンテキストを探す
+    for (const item of this.contextPool) {
+      if (!item.inUse) {
+        item.inUse = true;
+        item.lastUsed = new Date();
+        return item.context;
+      }
+    }
+    
+    // プールが最大サイズに達していない場合は新しいコンテキストを作成
+    if (this.contextPool.length < this.MAX_CONTEXTS && this.browser) {
+      try {
+        const context = await this.browser.newContext({
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        });
+        
+        const poolItem = {
+          context,
+          inUse: true,
+          lastUsed: new Date()
+        };
+        
+        this.contextPool.push(poolItem);
+        return context;
+      } catch (error) {
+        console.error('Error creating new browser context:', error);
+        throw error;
+      }
+    }
+    
+    // プールが最大サイズに達している場合は待機してから再試行
+    console.log('Context pool is full, waiting for available context...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    return this.getContext();
+  }
+  
+  // コンテキストを解放
+  private releaseContext(context: any): void {
+    for (const item of this.contextPool) {
+      if (item.context === context) {
+        item.inUse = false;
+        item.lastUsed = new Date();
+        return;
+      }
     }
   }
 
@@ -173,10 +253,14 @@ export class OddsCollector {
       throw new Error('Invalid configuration');
     }
 
-    const context = await this.browser.newContext();
-    const page = await context.newPage();
-
+    let context: any = null;
+    let page: any = null;
+    
     try {
+      // コンテキストプールからコンテキストを取得
+      context = await this.getContext();
+      page = await context.newPage();
+
       // 共通のページ遷移ロジック
       await this.navigateToRacePage(page, raceId, pastRaceUrl);
       
@@ -205,10 +289,41 @@ export class OddsCollector {
         return a.frame - b.frame;
       });
 
+      // ページを閉じる（コンテキストは再利用）
+      await page.close();
+      
       return sortedHorses;
-
+    } catch (error) {
+      console.error(`Error collecting ${betType} odds for race ${raceId}:`, error);
+      
+      // エラー発生時はページとコンテキストを閉じて新しいものを使用するようにする
+      if (page) {
+        try {
+          await page.close();
+        } catch (closeError) {
+          console.error('Error closing page:', closeError);
+        }
+      }
+      
+      // コンテキストプールから削除
+      if (context) {
+        const index = this.contextPool.findIndex(item => item.context === context);
+        if (index !== -1) {
+          try {
+            await this.contextPool[index].context.close();
+          } catch (closeError) {
+            console.error('Error closing context:', closeError);
+          }
+          this.contextPool.splice(index, 1);
+        }
+      }
+      
+      throw error;
     } finally {
-      await context.close();
+      // コンテキストを解放（エラーがなければ再利用可能にする）
+      if (context) {
+        this.releaseContext(context);
+      }
     }
   }
 
@@ -634,42 +749,93 @@ export class OddsCollector {
     return tan3OddsData;
   }
 
-  async saveTanOddsHistory(odds: OddsData) {
-    // 単勝オッズは履歴として保存
-    await db.insert(tanOddsHistory).values({
-      horseId: odds.horseId,
-      odds: odds.tanOdds.toString(),
-      timestamp: odds.timestamp,
-      raceId: odds.raceId
-    });
-  }
-
-  async updateFukuOdds(odds: OddsData) {
-    // 複勝オッズは更新（なければ挿入）
-    const existing = await db.query.fukuOdds.findFirst({
-      where: and(
-        eq(fukuOdds.horseId, odds.horseId),
-        eq(fukuOdds.raceId, odds.raceId)
-      )
-    });
-
-    if (existing) {
-      await db
-        .update(fukuOdds)
-        .set({
-          oddsMin: odds.fukuOddsMin.toString(),
-          oddsMax: odds.fukuOddsMax.toString(),
-          timestamp: odds.timestamp
-        })
-        .where(eq(fukuOdds.id, existing.id));
-    } else {
-      await db.insert(fukuOdds).values({
+  async saveOddsHistory(oddsData: OddsData[]) {
+    try {
+      // バッチサイズを設定
+      const BATCH_SIZE = BATCH_SIZES.tanpuku;
+      
+      // 単勝オッズと複勝オッズを別々のバッチで処理
+      const tanOddsInserts = oddsData.map(odds => ({
         horseId: odds.horseId,
-        oddsMin: odds.fukuOddsMin.toString(),
-        oddsMax: odds.fukuOddsMax.toString(),
+        odds: odds.tanOdds.toString(),
         timestamp: odds.timestamp,
         raceId: odds.raceId
+      }));
+      
+      const fukuOddsUpserts = [];
+      
+      for (const odds of oddsData) {
+        // 複勝オッズを更新用に準備
+        fukuOddsUpserts.push({
+          horseId: odds.horseId,
+          oddsMin: odds.fukuOddsMin.toString(),
+          oddsMax: odds.fukuOddsMax.toString(),
+          timestamp: odds.timestamp,
+          raceId: odds.raceId
+        });
+      }
+      
+      // 単勝オッズをバッチで挿入
+      for (let i = 0; i < tanOddsInserts.length; i += BATCH_SIZE) {
+        const batch = tanOddsInserts.slice(i, i + BATCH_SIZE);
+        await db.insert(tanOddsHistory).values(batch);
+      }
+      
+      // 複勝オッズをバッチで更新
+      // 既存のデータを一括取得
+      const raceId = oddsData[0].raceId;
+      const existingFukuOdds = await db.query.fukuOdds.findMany({
+        where: eq(fukuOdds.raceId, raceId)
       });
+      
+      const existingMap = new Map(
+        existingFukuOdds.map(odds => [odds.horseId, odds])
+      );
+      
+      const updates = [];
+      const inserts = [];
+      
+      for (const odds of fukuOddsUpserts) {
+        const existing = existingMap.get(odds.horseId);
+        if (existing) {
+          updates.push({
+            id: existing.id,
+            ...odds
+          });
+        } else {
+          inserts.push(odds);
+        }
+      }
+      
+      // バッチ更新
+      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+        const batch = updates.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map(update => {
+            if (!update.id) return Promise.resolve();
+            return db.update(fukuOdds)
+              .set({
+                oddsMin: update.oddsMin,
+                oddsMax: update.oddsMax,
+                timestamp: update.timestamp
+              })
+              .where(eq(fukuOdds.id, update.id));
+          })
+        );
+      }
+      
+      // バッチ挿入
+      for (let i = 0; i < inserts.length; i += BATCH_SIZE) {
+        const batch = inserts.slice(i, i + BATCH_SIZE);
+        if (batch.length > 0) {
+          await db.insert(fukuOdds).values(batch);
+        }
+      }
+      
+      console.log(`Saved odds for ${oddsData.length} horses`);
+    } catch (error) {
+      console.error('Error saving odds:', error);
+      throw error;
     }
   }
 
@@ -1060,22 +1226,6 @@ export class OddsCollector {
     }
   }
 
-  async saveOddsHistory(oddsData: OddsData[]) {
-    try {
-      for (const odds of oddsData) {
-        // 単勝オッズを履歴として保存
-        await this.saveTanOddsHistory(odds);
-        
-        // 複勝オッズを更新
-        await this.updateFukuOdds(odds);
-      }
-      console.log(`Saved odds for ${oddsData.length} horses`);
-    } catch (error) {
-      console.error('Error saving odds:', error);
-      throw error;
-    }
-  }
-
   async startPeriodicCollection(intervalMinutes: number = 5) {
     setInterval(async () => {
       const activeRaces = await db.select()
@@ -1108,9 +1258,18 @@ export class OddsCollector {
   }
 
   async cleanup() {
-    if (this.browser) {
-      await this.browser.close();
+    // コンテキストプールをクリーンアップ
+    for (const item of this.contextPool) {
+      try {
+        await item.context.close();
+      } catch (error) {
+        console.error('Error closing context during cleanup:', error);
+      }
     }
+    this.contextPool = [];
+    
+    // ブラウザは外部から渡されたものなので、ここでは閉じない
+    this.browser = null;
   }
 }
 
