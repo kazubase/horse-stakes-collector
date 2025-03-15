@@ -40,42 +40,60 @@ class DailyOddsCollector {
         console.log('Checking for Playwright browser installation...');
         const fs = await import('fs');
         const path = await import('path');
-        const browserPath = process.env.PLAYWRIGHT_BROWSERS_PATH === '0' 
-          ? path.join(process.cwd(), 'node_modules', 'playwright-core', '.local-browsers')
-          : process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(process.cwd(), '.cache', 'ms-playwright');
+        const { execSync } = await import('child_process');
         
-        console.log('Browser path:', browserPath);
-        
-        // 実行ファイルの存在確認（複数の可能性のあるパスをチェック）
+        // 複数の可能性のあるパスをチェック
         const possiblePaths = [
-          path.join(browserPath, 'chromium-1148', 'chrome-linux', 'chrome'),
-          path.join(browserPath, 'chromium_headless_shell-1148', 'chrome-linux', 'headless_shell'),
           '/app/.cache/ms-playwright/chromium-1148/chrome-linux/chrome',
-          '/app/.cache/ms-playwright/chromium_headless_shell-1148/chrome-linux/headless_shell'
+          '/app/.cache/ms-playwright/chromium_headless_shell-1148/chrome-linux/headless_shell',
+          '/app/.cache/ms-playwright/chromium-1148/chrome-linux/chrome',
+          '/app/node_modules/.cache/ms-playwright/chromium-1148/chrome-linux/chrome'
         ];
         
         let browserExists = false;
-        for (const chromiumPath of possiblePaths) {
-          if (fs.existsSync(chromiumPath)) {
-            console.log('Browser executable found at:', chromiumPath);
+        for (const chromePath of possiblePaths) {
+          console.log('Checking path:', chromePath);
+          if (fs.existsSync(chromePath)) {
+            console.log('Browser executable found at:', chromePath);
             browserExists = true;
+            process.env.CHROME_BIN = chromePath; // 見つかったパスを環境変数に設定
             break;
           }
         }
         
         if (!browserExists) {
           console.log('Browser executable not found, attempting to install...');
-          const { execSync } = await import('child_process');
-          execSync('PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium', { stdio: 'inherit' });
+          // 複数のインストールコマンドを試す
+          try {
+            execSync('PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium', { stdio: 'inherit' });
+          } catch (e) {
+            console.log('First install attempt failed, trying alternative method...');
+            execSync('npx playwright install chromium', { stdio: 'inherit' });
+          }
           console.log('Browser installation completed');
+          
+          // インストール後に再度パスをチェック
+          for (const chromePath of possiblePaths) {
+            if (fs.existsSync(chromePath)) {
+              console.log('After installation, browser found at:', chromePath);
+              process.env.CHROME_BIN = chromePath;
+              break;
+            }
+          }
         }
       } catch (installError) {
         console.warn('Failed to check/install browser:', installError);
       }
       
+      // Puppeteerビルドパックが提供するChromiumを使用するフォールバック
+      if (!process.env.CHROME_BIN) {
+        process.env.CHROME_BIN = process.env.PUPPETEER_EXECUTABLE_PATH || '/app/.apt/usr/bin/google-chrome';
+        console.log('Using fallback Chrome path:', process.env.CHROME_BIN);
+      }
+      
       this.browser = await chromium.launch({ 
         headless: true,
-        executablePath: process.env.CHROME_BIN || undefined,  // nullをundefinedに変更
+        executablePath: process.env.CHROME_BIN,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -114,7 +132,7 @@ class DailyOddsCollector {
       // 新しいブラウザを初期化
       this.browser = await chromium.launch({ 
         headless: true,
-        executablePath: process.env.CHROME_BIN || undefined,
+        executablePath: process.env.CHROME_BIN,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
