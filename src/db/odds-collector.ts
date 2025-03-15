@@ -659,7 +659,7 @@ export class OddsCollector {
     });
     
     const existingMap = new Map(
-      existingOdds.map((odds: WakurenOdds) => [
+      existingOdds.map(odds => [
         `${odds.frame1}-${odds.frame2}`,
         odds
       ])
@@ -721,7 +721,7 @@ export class OddsCollector {
     });
     
     const existingMap = new Map(
-      existingOdds.map((odds: UmarenOdds) => [
+      existingOdds.map(odds => [
         `${odds.horse1}-${odds.horse2}`,
         odds
       ])
@@ -783,7 +783,7 @@ export class OddsCollector {
     });
     
     const existingMap = new Map(
-      existingOdds.map((odds: WideOdds) => [
+      existingOdds.map(odds => [
         `${odds.horse1}-${odds.horse2}`,
         odds
       ])
@@ -848,7 +848,7 @@ export class OddsCollector {
     });
     
     const existingMap = new Map(
-      existingOdds.map((odds: UmatanOdds) => [
+      existingOdds.map(odds => [
         `${odds.horse1}-${odds.horse2}`,
         odds
       ])
@@ -910,7 +910,7 @@ export class OddsCollector {
     });
     
     const existingMap = new Map(
-      existingOdds.map((odds: Fuku3Odds) => {
+      existingOdds.map(odds => {
         const horses = [odds.horse1, odds.horse2, odds.horse3].sort((a, b) => a - b);
         return [`${horses[0]}-${horses[1]}-${horses[2]}`, odds];
       })
@@ -978,7 +978,7 @@ export class OddsCollector {
     
     // 既存データをマップ化して高速なルックアップを実現
     const existingMap = new Map(
-      existingOdds.map((odds: Tan3Odds) => [
+      existingOdds.map(odds => [
         `${odds.horse1}-${odds.horse2}-${odds.horse3}`,
         odds
       ])

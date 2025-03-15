@@ -34,36 +34,25 @@ class DailyOddsCollector {
   }
 
   async initialize() {
-    this.browser = await chromium.launch({
-      headless: true,
-      executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH ? undefined : '/app/.chrome-for-testing/chrome-linux64/chrome',
-      args: [
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-setuid-sandbox',
-        '--no-sandbox',
-        '--no-zygote',
-        '--single-process',
-        '--disable-extensions',
-        '--disable-accelerated-2d-canvas',
-        '--disable-accelerated-jpeg-decoding',
-        '--disable-accelerated-mjpeg-decode',
-        '--disable-accelerated-video-decode',
-        '--disable-background-networking',
-        '--disable-background-timer-throttling',
-        '--disable-breakpad',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-default-apps',
-        '--disable-features=TranslateUI,BlinkGenPropertyTrees',
-        '--disable-ipc-flooding-protection',
-        '--disable-notifications',
-        '--disable-renderer-backgrounding',
-        '--mute-audio'
-      ]
-    });
-    await this.collector.initialize();
-    this.lastBrowserReset = new Date();
-    console.log('Browser initialized successfully at:', this.lastBrowserReset.toISOString());
+    try {
+      this.browser = await chromium.launch({ 
+        headless: true,
+        executablePath: process.env.CHROME_BIN || undefined,  // nullをundefinedに変更
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer'
+        ]
+      });
+      await this.collector.initialize();
+      this.lastBrowserReset = new Date();
+      console.log('Browser initialized successfully at:', this.lastBrowserReset.toISOString());
+    } catch (error) {
+      console.error('Failed to initialize browser:', error);
+      throw error;
+    }
   }
 
   // ブラウザを再初期化する関数
@@ -73,16 +62,6 @@ class DailyOddsCollector {
       // 既存のブラウザをクリーンアップ
       if (this.browser) {
         try {
-          // すべてのコンテキストを閉じる
-          const contexts = this.browser.contexts();
-          for (const context of contexts) {
-            try {
-              await context.close();
-            } catch (error) {
-              console.error('Error closing browser context during reset:', error);
-            }
-          }
-          
           await this.browser.close();
         } catch (error) {
           console.error('Error closing browser during reset:', error);
@@ -95,31 +74,15 @@ class DailyOddsCollector {
       await this.collector.cleanup();
       
       // 新しいブラウザを初期化
-      this.browser = await chromium.launch({
+      this.browser = await chromium.launch({ 
         headless: true,
-        executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH ? undefined : '/app/.chrome-for-testing/chrome-linux64/chrome',
+        executablePath: process.env.CHROME_BIN || undefined,
         args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
-          '--disable-setuid-sandbox',
-          '--no-sandbox',
-          '--no-zygote',
-          '--single-process',
-          '--disable-extensions',
-          '--disable-accelerated-2d-canvas',
-          '--disable-accelerated-jpeg-decoding',
-          '--disable-accelerated-mjpeg-decode',
-          '--disable-accelerated-video-decode',
-          '--disable-background-networking',
-          '--disable-background-timer-throttling',
-          '--disable-breakpad',
-          '--disable-component-extensions-with-background-pages',
-          '--disable-default-apps',
-          '--disable-features=TranslateUI,BlinkGenPropertyTrees',
-          '--disable-ipc-flooding-protection',
-          '--disable-notifications',
-          '--disable-renderer-backgrounding',
-          '--mute-audio'
+          '--disable-software-rasterizer'
         ]
       });
       
@@ -127,21 +90,6 @@ class DailyOddsCollector {
       await this.collector.initialize();
       this.lastBrowserReset = new Date();
       console.log('Browser reset successfully at:', this.lastBrowserReset.toISOString());
-      
-      // メモリ使用量を出力
-      const memoryUsage = process.memoryUsage();
-      console.log('Memory usage after browser reset:', {
-        rss: `${Math.round(memoryUsage.rss / 1024 / 1024)} MB`,
-        heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)} MB`,
-        heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`,
-        external: `${Math.round(memoryUsage.external / 1024 / 1024)} MB`
-      });
-      
-      // 明示的にガベージコレクションを促す
-      if (global.gc) {
-        global.gc();
-      }
-      
       return true;
     } catch (error) {
       console.error('Failed to reset browser:', error);
@@ -270,7 +218,7 @@ class DailyOddsCollector {
                 // レース名とグレード情報を取得
                 const raceName = $raceName.find('.stakes').text().trim();
                 const gradeIcon = $raceName.find('.grade_icon img').attr('src');
-                const isGrade = gradeIcon?.includes('icon_grade_s_g') || gradeIcon?.includes('icon_grade_s_jg');
+                const isGrade = gradeIcon?.includes('icon_grade_s_g');
                 
                 // レース番号の画像から取得（"11レース" → 11）
                 const raceNumber = parseInt($raceNum.find('img').attr('alt')?.replace('レース', '') || '0');
@@ -554,11 +502,11 @@ class DailyOddsCollector {
       this.checkAndRestoreJobs();
       
       // upcomingレースに対するジョブが存在することを確認
-      const upcomingRaces = await this.withDbRetry(() =>
-        db.select()
-          .from(races)
-          .where(eq(races.status, 'upcoming'))
-      ) as Race[];
+      const upcomingRaces = await this.withDbRetry(() => 
+        db.query.races.findMany({
+          where: eq(races.status, 'upcoming')
+        })
+      );
       
       this.logWithTimestamp('info', `Found ${upcomingRaces.length} upcoming races during job check`);
       
@@ -665,11 +613,11 @@ class DailyOddsCollector {
         await this.recoverFromError(`collectOdds for race ${raceId}`);
       }
       
-      const race = await this.withDbRetry(() =>
+      const race = await this.withDbRetry(() => 
         db.query.races.findFirst({
           where: eq(races.id, raceId)
         })
-      ) as Race;
+      );
 
       if (!race || race.status === 'done') return;
 
@@ -711,32 +659,28 @@ class DailyOddsCollector {
               const odds = await this.collector.collectOddsForBetType(raceId, betType);
               
               if (odds.length > 0) {
-                try {
-                  if (betType === 'tanpuku') {
-                    await this.handleTanpukuOdds(raceId, odds);
-                  } else {
-                    await this.handleOtherOdds(betType, odds);
-                  }
-                  this.logWithTimestamp('info', `Final ${betType} odds data saved successfully`);
-                  break;
-                } catch (error: any) {
-                  // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
-                  if (error.name === 'TimeoutError') {
-                    this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
-                    break; // このベットタイプのリトライを中止
-                  }
-                  
-                  this.logWithTimestamp('error', `Error collecting final ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
-                  if (retryCount === this.MAX_RETRIES - 1) {
-                    this.logWithTimestamp('error', `Max retries exceeded for final ${betType} odds collection`);
-                    break;
-                  }
-                  retryCount++;
-                  await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+                if (betType === 'tanpuku') {
+                  await this.handleTanpukuOdds(raceId, odds);
+                } else {
+                  await this.handleOtherOdds(betType, odds);
                 }
+                this.logWithTimestamp('info', `Final ${betType} odds data saved successfully`);
+                break;
               }
             } catch (error: any) {
-              // エラー処理...
+              // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
+              if (error.name === 'TimeoutError') {
+                this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
+                break; // このベットタイプのリトライを中止
+              }
+              
+              this.logWithTimestamp('error', `Error collecting final ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
+              if (retryCount === this.MAX_RETRIES - 1) {
+                this.logWithTimestamp('error', `Max retries exceeded for final ${betType} odds collection`);
+                break;
+              }
+              retryCount++;
+              await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
             }
           }
         }
@@ -763,32 +707,28 @@ class DailyOddsCollector {
             const odds = await this.collector.collectOddsForBetType(raceId, betType);
             
             if (odds.length > 0) {
-              try {
-                if (betType === 'tanpuku') {
-                  await this.handleTanpukuOdds(raceId, odds);
-                } else {
-                  await this.handleOtherOdds(betType, odds);
-                }
-                this.logWithTimestamp('info', `${betType} odds data saved successfully`);
-                break;
-              } catch (error: any) {
-                // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
-                if (error.name === 'TimeoutError') {
-                  this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
-                  break; // このベットタイプのリトライを中止
-                }
-                
-                this.logWithTimestamp('error', `Error collecting ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
-                if (retryCount === this.MAX_RETRIES - 1) {
-                  this.logWithTimestamp('error', `Max retries exceeded for ${betType} odds collection`);
-                  break;
-                }
-                retryCount++;
-                await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+              if (betType === 'tanpuku') {
+                await this.handleTanpukuOdds(raceId, odds);
+              } else {
+                await this.handleOtherOdds(betType, odds);
               }
+              this.logWithTimestamp('info', `${betType} odds data saved successfully`);
+              break;
             }
           } catch (error: any) {
-            // エラー処理...
+            // タイムアウトエラーの場合は、このベットタイプが利用できないと判断してスキップ
+            if (error.name === 'TimeoutError') {
+              this.logWithTimestamp('warn', `Timeout occurred while collecting ${betType} odds for race ${raceId}. This bet type may not be available for this race. Skipping.`);
+              break; // このベットタイプのリトライを中止
+            }
+            
+            this.logWithTimestamp('error', `Error collecting ${betType} odds for race ${raceId} (attempt ${retryCount + 1}):`, error);
+            if (retryCount === this.MAX_RETRIES - 1) {
+              this.logWithTimestamp('error', `Max retries exceeded for ${betType} odds collection`);
+              break;
+            }
+            retryCount++;
+            await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
           }
         }
       }
@@ -874,24 +814,39 @@ class DailyOddsCollector {
 
   async checkUpcomingRaces() {
     try {
+      // 定期的なブラウザリセットのチェック
+      await this.checkAndResetBrowserIfNeeded();
+      
+      // ヘルスチェックを実行
+      const healthCheckSuccess = await this.healthCheck();
+      if (!healthCheckSuccess) {
+        this.logWithTimestamp('error', 'Health check failed in checkUpcomingRaces');
+        await this.recoverFromError('checkUpcomingRaces');
+      }
+      
+      // アクティブなジョブの状態を確認
+      this.checkAndRestoreJobs();
+      
       // DBからupcomingステータスのレースを取得
-      const upcomingRaces = await this.withDbRetry(() =>
-        db.select()
-          .from(races)
-          .where(eq(races.status, 'upcoming'))
-      ) as Race[];
+      const upcomingRaces = await this.withDbRetry(() => 
+        db.query.races.findMany({
+          where: eq(races.status, 'upcoming')
+        })
+      );
 
       this.logWithTimestamp('info', `Found ${upcomingRaces.length} upcoming races`);
-      
+
       // upcomingレースが見つからない場合、JRAサイトから再取得を試みる
       if (upcomingRaces.length === 0) {
         this.logWithTimestamp('info', 'No upcoming races found in DB. Attempting to fetch from JRA site...');
         try {
           const freshRaces = await this.getTodayGradeRaces();
           if (freshRaces.length > 0) {
-            this.logWithTimestamp('info', `Found ${freshRaces.length} races from JRA site.`);
+            this.logWithTimestamp('info', `Found ${freshRaces.length} races from JRA site`);
             for (const race of freshRaces) {
               await this.registerRace(race);
+              await this.scheduleOddsCollection(race);
+              await new Promise(resolve => setTimeout(resolve, 2000)); // 2秒間隔で処理
             }
             return; // 新しいレースを登録したので、以降の処理はスキップ
           } else {
@@ -899,9 +854,11 @@ class DailyOddsCollector {
           }
         } catch (error) {
           this.logWithTimestamp('error', 'Error fetching races from JRA site:', error);
+          // エラーからの回復を試みる
+          await this.recoverFromError('getTodayGradeRaces');
         }
       }
-      
+
       // 各レースのステータスをチェック
       for (const race of upcomingRaces) {
         const now = new Date();
@@ -956,28 +913,36 @@ class DailyOddsCollector {
         }
       }
     } catch (error) {
-      this.logWithTimestamp('error', 'Error checking upcoming races:', error);
+      this.logWithTimestamp('error', 'Error in checkUpcomingRaces:', error);
+      // エラーからの回復を試みる
+      await this.recoverFromError('checkUpcomingRaces');
     }
   }
 
   // 古いレースデータを削除する関数を追加
   private async cleanupOldRaceData() {
     try {
-      // 30日以上前のレースを取得
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      // 2週間前の日付を計算
+      const twoWeeksAgo = new Date();
+      twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
       
-      const oldRaces = await this.withDbRetry(() =>
-        db.select()
-          .from(races)
-          .where(sql`${races.startTime} < ${thirtyDaysAgo}`)
-      ) as Race[];
-      
+      console.log(`Cleaning up race data older than ${twoWeeksAgo.toISOString()}`);
+
+      // 古いレースを取得
+      const oldRaces = await db.query.races.findMany({
+        where: sql`${races.startTime} < ${twoWeeksAgo}`
+      });
+
+      if (oldRaces.length === 0) {
+        console.log('No old races to clean up');
+        return;
+      }
+
       console.log(`Found ${oldRaces.length} races to clean up`);
       const raceIds = oldRaces.map(race => race.id);
-      
+
       // トランザクションで関連データを一括削除
-      await db.transaction(async (tx: any) => {
+      await db.transaction(async (tx) => {
         // 関連テーブルのデータを削除
         await tx.delete(tanOddsHistory).where(sql`${tanOddsHistory.raceId} = ANY(${raceIds})`);
         await tx.delete(fukuOdds).where(sql`${fukuOdds.raceId} = ANY(${raceIds})`);
@@ -990,10 +955,10 @@ class DailyOddsCollector {
         await tx.delete(horses).where(sql`${horses.raceId} = ANY(${raceIds})`);
         await tx.delete(races).where(sql`${races.id} = ANY(${raceIds})`);
       });
-      
-      this.logWithTimestamp('info', `Cleaned up ${oldRaces.length} old races`);
+
+      console.log(`Successfully cleaned up ${oldRaces.length} races and their related data`);
     } catch (error) {
-      this.logWithTimestamp('error', 'Error cleaning up old race data:', error);
+      console.error('Error cleaning up old race data:', error);
     }
   }
 
@@ -1028,32 +993,37 @@ class DailyOddsCollector {
   // 定期的なステータスレポートを生成
   public async generateStatusReport(): Promise<string> {
     try {
-      // ブラウザの稼働時間を計算
+      // アクティブなジョブ数
+      const activeJobsCount = this.activeJobs.size;
+      
+      // upcomingレース数
+      const upcomingRaces = await this.withDbRetry(() => 
+        db.query.races.findMany({
+          where: eq(races.status, 'upcoming')
+        })
+      );
+      
+      // ブラウザの状態
+      const browserStatus = this.browser ? 'active' : 'inactive';
       const browserUptime = this.browser ? 
-        Math.floor((new Date().getTime() - this.lastBrowserReset.getTime()) / (60 * 1000)) : 
-        0;
+        `${(new Date().getTime() - this.lastBrowserReset.getTime()) / (60 * 60 * 1000)} hours` : 
+        'N/A';
       
-      // アクティブなジョブ数を取得
-      const activeJobsCount = this.getActiveJobsCount();
-      
-      // 予定されているレース数を取得
-      const upcomingRaces = await this.withDbRetry(() =>
-        db.select()
-          .from(races)
-          .where(eq(races.status, 'upcoming'))
-      ) as Race[];
-      
-      return [
-        `Status Report (${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })})`,
+      // レポート生成
+      const report = [
+        `Status Report at ${new Date().toISOString()}`,
+        `Browser Status: ${browserStatus}`,
         `Browser Uptime: ${browserUptime}`,
         `Active Jobs: ${activeJobsCount}`,
         `Upcoming Races: ${upcomingRaces.length}`,
         `Upcoming Race IDs: ${upcomingRaces.map(r => r.id).join(', ')}`
       ].join('\n');
       
+      this.logWithTimestamp('info', 'Status Report Generated');
+      return report;
     } catch (error) {
-      this.logWithTimestamp('error', 'Error generating status report:', error);
-      return `Error generating status report: ${error}`;
+      this.logWithTimestamp('error', 'Failed to generate status report:', error);
+      return `Failed to generate status report: ${error}`;
     }
   }
 
