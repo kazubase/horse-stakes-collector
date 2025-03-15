@@ -1,6 +1,4 @@
 {
-  "include": ["db/**/*", "server/**/*", "src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"],
   "compilerOptions": {
     "target": "ES2020",
     "module": "NodeNext",
@@ -9,12 +7,16 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "./dist",
+    "rootDir": ".",
     "allowImportingTsExtensions": false,
     "baseUrl": ".",
     "types": ["node", "node-schedule"],
+    "resolveJsonModule": true,
     "paths": {
       "@db": ["./db/index.ts"],
       "@db/*": ["./db/*"]
     }
-  }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }
