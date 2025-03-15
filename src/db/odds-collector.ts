@@ -140,10 +140,32 @@ export class OddsCollector {
     // 他の馬券種別も同様に定義
   };
 
-  async initialize() {
-    this.browser = await chromium.launch({
-      headless: true  // デバッグ用にheadlessをfalseに設定
-    });
+  async initialize(browser?: Browser) {
+    try {
+      // 外部から渡されたブラウザインスタンスがあれば使用
+      if (browser) {
+        this.browser = browser;
+        console.log('Using existing browser instance for OddsCollector');
+      } else {
+        // 独自のブラウザインスタンスを作成（フォールバック）
+        console.log('Creating new browser instance for OddsCollector');
+        this.browser = await chromium.launch({ 
+          headless: true,
+          executablePath: process.env.CHROME_BIN || undefined,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-software-rasterizer'
+          ]
+        });
+      }
+      // 残りの初期化コード...
+    } catch (error) {
+      console.error('Failed to initialize OddsCollector:', error);
+      throw error;
+    }
   }
 
   async collectOddsForBetType(raceId: number, betType: string, pastRaceUrl?: string): Promise<any[]> {

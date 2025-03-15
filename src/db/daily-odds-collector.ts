@@ -136,7 +136,9 @@ class DailyOddsCollector {
           '--disable-software-rasterizer'
         ]
       });
-      await this.collector.initialize();
+      
+      // ブラウザインスタンスを渡して初期化
+      await this.collector.initialize(this.browser);
       this.lastBrowserReset = new Date();
       console.log('Browser initialized successfully at:', this.lastBrowserReset.toISOString());
     } catch (error) {
@@ -177,7 +179,7 @@ class DailyOddsCollector {
       });
       
       // コレクターを再初期化
-      await this.collector.initialize();
+      await this.collector.initialize(this.browser);
       this.lastBrowserReset = new Date();
       console.log('Browser reset successfully at:', this.lastBrowserReset.toISOString());
       return true;
