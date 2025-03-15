@@ -336,13 +336,17 @@ class DailyOddsCollector {
 
                   // baseDate を元にレース開始時刻を設定（ヘッダーの日付が翌日の場合は tomorrow、そうでなければ today）
                   const [hours, minutes] = timeText.replace(/[時分]/g, ':').split(':').map(Number);
-                  const raceTime = new Date(baseDate.getTime());
-                  raceTime.setHours(hours, minutes, 0, 0);
+                  
+                  // 日本時間（JST）でレース時刻を設定
+                  const raceTimeJST = new Date(baseDate.getTime());
+                  raceTimeJST.setHours(hours, minutes, 0, 0);
+                  console.log('Debug - raceTimeJST (before conversion):', raceTimeJST.toISOString());
                   
                   // 重要: JSTの時間をUTCに変換してDBに保存する
                   // JSTからUTCに変換（-9時間）
                   const JST_OFFSET = 9 * 60 * 60 * 1000;
-                  const raceTimeUTC = new Date(raceTime.getTime() - JST_OFFSET);
+                  const raceTimeUTC = new Date(raceTimeJST.getTime() - JST_OFFSET);
+                  console.log('Debug - raceTimeUTC (after conversion):', raceTimeUTC.toISOString());
                   
                   const year = baseDate.getFullYear();
                   const venueCode = this.getVenueCode(venue);
@@ -358,7 +362,14 @@ class DailyOddsCollector {
                     isGrade: !!isGrade  
                   });
                   
-                  console.log('Found race:', { raceName, raceId, timeText, raceNumber, raceTimeUTC });
+                  console.log('Found race:', { 
+                    raceName, 
+                    raceId, 
+                    timeText, 
+                    raceNumber, 
+                    raceTimeJST: raceTimeJST.toISOString(),
+                    raceTimeUTC: raceTimeUTC.toISOString() 
+                  });
                 }
               }
 
@@ -416,19 +427,34 @@ class DailyOddsCollector {
       // 日本時間（JST）での処理を明示的に行う
       const JST_OFFSET = 9 * 60 * 60 * 1000; // 日本時間は UTC+9 (ミリ秒単位)
       
+      // デバッグ情報を出力
+      console.log('Debug - race.startTime (raw):', race.startTime);
+      console.log('Debug - race.startTime (ISO):', race.startTime.toISOString());
+      
       // 重要: race.startTimeはUTCとして保存されているが、表示はJSTとして行う
       // UTCのままで処理し、表示時のみJSTに変換する
       const raceStartTimeUTC = new Date(race.startTime);
+      console.log('Debug - raceStartTimeUTC:', raceStartTimeUTC.toISOString());
       
       // 収集開始時刻の設定（重賞レースの場合）
       let collectionStartTimeUTC: Date | null = null;
       if (race.isGrade) {
         // 重賞レースの場合、前日19:00 JSTから収集開始
-        // UTCでは前日10:00（19:00 JST - 9時間）
-        const collectionStartTimeUTC_temp = new Date(raceStartTimeUTC);
-        collectionStartTimeUTC_temp.setDate(collectionStartTimeUTC_temp.getDate() - 1);
-        collectionStartTimeUTC_temp.setUTCHours(10, 0, 0, 0); // 19:00 JST = 10:00 UTC
-        collectionStartTimeUTC = collectionStartTimeUTC_temp;
+        // 日本時間で計算してからUTCに変換する方法に変更
+        
+        // 1. レース開始時刻をJSTに変換
+        const raceStartTimeJST = new Date(raceStartTimeUTC.getTime() + JST_OFFSET);
+        console.log('Debug - raceStartTimeJST:', raceStartTimeJST.toISOString());
+        
+        // 2. 前日の19:00 JSTを設定
+        const collectionStartTimeJST = new Date(raceStartTimeJST);
+        collectionStartTimeJST.setDate(collectionStartTimeJST.getDate() - 1);
+        collectionStartTimeJST.setHours(19, 0, 0, 0);
+        console.log('Debug - collectionStartTimeJST:', collectionStartTimeJST.toISOString());
+        
+        // 3. JSTからUTCに変換
+        collectionStartTimeUTC = new Date(collectionStartTimeJST.getTime() - JST_OFFSET);
+        console.log('Debug - collectionStartTimeUTC:', collectionStartTimeUTC.toISOString());
         
         // UTC時間をJST表示に変換（ログ表示用）
         const jstCollectionStartTime = this.formatJSTTime(collectionStartTimeUTC);
@@ -445,11 +471,17 @@ class DailyOddsCollector {
       const job = schedule.scheduleJob('*/5 * * * *', async () => {
         try {
           const nowUTC = new Date();
+          console.log('Debug - nowUTC:', nowUTC.toISOString());
           
           // 重賞の場合、収集開始時刻に達していなければスキップする
           if (race.isGrade && collectionStartTimeUTC && nowUTC < collectionStartTimeUTC) {
             const jstNow = this.formatJSTTime(nowUTC);
             const jstCollectionStart = this.formatJSTTime(collectionStartTimeUTC);
+            console.log('Debug - Time comparison:', {
+              nowUTC: nowUTC.toISOString(),
+              collectionStartTimeUTC: collectionStartTimeUTC.toISOString(),
+              comparison: nowUTC < collectionStartTimeUTC ? 'nowUTC is earlier' : 'nowUTC is later'
+            });
             this.logWithTimestamp('info', 
               `Race ${race.id} is grade. Waiting for collection start time: ${jstCollectionStart} (JST). Current: ${jstNow} (JST)`
             );
@@ -535,6 +567,11 @@ class DailyOddsCollector {
       
       // 初回実行: 即時オッズ収集を実施する
       const nowUTC = new Date();
+      console.log('Debug - Initial check nowUTC:', nowUTC.toISOString());
+      if (collectionStartTimeUTC) {
+        console.log('Debug - Initial check collectionStartTimeUTC:', collectionStartTimeUTC.toISOString());
+        console.log('Debug - Initial check comparison:', nowUTC >= collectionStartTimeUTC ? 'nowUTC is later or equal' : 'nowUTC is earlier');
+      }
       
       // 重賞レースの場合、収集開始時刻に達していれば即時収集
       if (!race.isGrade || (collectionStartTimeUTC && nowUTC >= collectionStartTimeUTC)) {
@@ -731,15 +768,21 @@ class DailyOddsCollector {
       const nowUTC = new Date();
       const JST_OFFSET = 9 * 60 * 60 * 1000; // 日本時間は UTC+9 (ミリ秒単位)
       
+      console.log('Debug - collectOdds - race.startTime:', race.startTime.toISOString());
+      
       // レース前日18:00から当日9:00までの間は収集を停止
       // 重要: race.startTimeはUTCとして保存されている
       const raceDateUTC = new Date(race.startTime);
+      console.log('Debug - collectOdds - raceDateUTC:', raceDateUTC.toISOString());
+      
       const previousDayUTC = new Date(raceDateUTC);
       previousDayUTC.setDate(previousDayUTC.getDate() - 1);
       previousDayUTC.setUTCHours(9, 0, 0, 0); // 18:00 JST = 9:00 UTC
+      console.log('Debug - collectOdds - previousDayUTC:', previousDayUTC.toISOString());
 
       const raceDayUTC = new Date(raceDateUTC);
       raceDayUTC.setUTCHours(0, 0, 0, 0); // 9:00 JST = 0:00 UTC
+      console.log('Debug - collectOdds - raceDayUTC:', raceDayUTC.toISOString());
 
       // 夜間収集停止の条件をコメントアウト
       // if (nowUTC >= previousDayUTC && nowUTC < raceDayUTC) {
@@ -756,6 +799,10 @@ class DailyOddsCollector {
       // レース開始時刻を過ぎている場合、最終オッズを取得してからステータスを更新
       // 重要: race.startTimeはUTCとして保存されている
       const raceStartTimeUTC = new Date(race.startTime);
+      console.log('Debug - collectOdds - nowUTC:', nowUTC.toISOString());
+      console.log('Debug - collectOdds - raceStartTimeUTC:', raceStartTimeUTC.toISOString());
+      console.log('Debug - collectOdds - comparison:', raceStartTimeUTC < nowUTC ? 'race has started' : 'race has not started yet');
+      
       if (raceStartTimeUTC < nowUTC && race.status === 'upcoming') {
         this.logWithTimestamp('info', `Race ${raceId} has started. Collecting final odds before marking as done.`);
         
@@ -1172,10 +1219,14 @@ class DailyOddsCollector {
   private formatJSTTime(date: Date): string {
     // UTCの時間を取得し、日本時間に変換（+9時間）
     const JST_OFFSET = 9 * 60 * 60 * 1000;
+    console.log('Debug - formatJSTTime - input date:', date.toISOString());
     const jstTime = new Date(date.getTime() + JST_OFFSET);
+    console.log('Debug - formatJSTTime - jstTime:', jstTime.toISOString());
     
     // 日本時間のフォーマット（YYYY-MM-DDThh:mm:ss.sss+09:00）
-    return jstTime.toISOString().replace('Z', '+09:00');
+    const result = jstTime.toISOString().replace('Z', '+09:00');
+    console.log('Debug - formatJSTTime - result:', result);
+    return result;
   }
 }
 
