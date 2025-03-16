@@ -533,14 +533,9 @@ class DailyOddsCollector {
       const jstRaceStartTime = this.formatJSTTime(raceStartTimeUTC);
       this.logWithTimestamp('info', `Setting up schedule for race: ${race.id}, start time: ${jstRaceStartTime} (JST)`);
       
-      // レースIDの下2桁を使用して、収集タイミングをずらす（0〜4分のオフセット）
-      const raceIdStr = race.id.toString();
-      const lastTwoDigits = parseInt(raceIdStr.slice(-2));
-      const offsetMinutes = lastTwoDigits % 5; // 0〜4分のオフセット
-      
-      // 動的なスケジュール設定 - 各レースの収集タイミングをずらす
-      const cronExpression = `${offsetMinutes},${offsetMinutes+5},${offsetMinutes+10},${offsetMinutes+15},${offsetMinutes+20},${offsetMinutes+25},${offsetMinutes+30},${offsetMinutes+35},${offsetMinutes+40},${offsetMinutes+45},${offsetMinutes+50},${offsetMinutes+55} * * * *`;
-      this.logWithTimestamp('info', `Setting cron schedule for race ${race.id}: ${cronExpression} (offset: ${offsetMinutes} min)`);
+      // 固定のcron式を使用（5分ごとに実行）
+      const cronExpression = `0,5,10,15,20,25,30,35,40,45,50,55 * * * *`;
+      this.logWithTimestamp('info', `Setting cron schedule for race ${race.id}: ${cronExpression}`);
       
       const job = schedule.scheduleJob(cronExpression, async () => {
         try {
@@ -580,22 +575,22 @@ class DailyOddsCollector {
                 shouldCollect = true;
               } else if (timeToRace <= 3 * 60 * 60 * 1000) {
                 // レース3時間前以内: 10分ごと
-                shouldCollect = nowUTC.getMinutes() % 10 === offsetMinutes % 10;
+                shouldCollect = nowUTC.getMinutes() % 10 === 0;
               } else if (timeToRace <= 12 * 60 * 60 * 1000) {
                 // レース12時間前以内: 30分ごと
-                shouldCollect = nowUTC.getMinutes() % 30 === offsetMinutes % 30;
+                shouldCollect = nowUTC.getMinutes() % 30 === 0;
               } else {
                 // それ以前: 1時間ごと
-                shouldCollect = nowUTC.getMinutes() === offsetMinutes;
+                shouldCollect = nowUTC.getMinutes() === 0;
               }
             } else {
               // 通常レースの収集頻度
               if (timeToRace <= 30 * 60 * 1000) {
                 // レース30分前以内: 10分ごと
-                shouldCollect = nowUTC.getMinutes() % 10 === offsetMinutes % 10;
+                shouldCollect = nowUTC.getMinutes() % 10 === 0;
               } else {
                 // それ以前: 30分ごと
-                shouldCollect = nowUTC.getMinutes() % 30 === offsetMinutes % 30;
+                shouldCollect = nowUTC.getMinutes() % 30 === 0;
               }
             }
             
@@ -737,14 +732,9 @@ class DailyOddsCollector {
           continue;
         }
         
-        // レースIDの下2桁を使用して、収集タイミングをずらす（0〜4分のオフセット）
-        const raceIdStr = race.id.toString();
-        const lastTwoDigits = parseInt(raceIdStr.slice(-2));
-        const offsetMinutes = lastTwoDigits % 5; // 0〜4分のオフセット
-        
-        // 動的なスケジュール設定 - 各レースの収集タイミングをずらす
-        const cronExpression = `${offsetMinutes},${offsetMinutes+5},${offsetMinutes+10},${offsetMinutes+15},${offsetMinutes+20},${offsetMinutes+25},${offsetMinutes+30},${offsetMinutes+35},${offsetMinutes+40},${offsetMinutes+45},${offsetMinutes+50},${offsetMinutes+55} * * * *`;
-        this.logWithTimestamp('info', `Restoring job for race ${race.id} with cron schedule: ${cronExpression} (offset: ${offsetMinutes} min)`);
+        // 固定のcron式を使用（5分ごとに実行）
+        const cronExpression = `0,5,10,15,20,25,30,35,40,45,50,55 * * * *`;
+        this.logWithTimestamp('info', `Restoring job for race ${race.id} with cron schedule: ${cronExpression}`);
         
         // RaceInfoオブジェクトを作成
         const raceInfo: RaceInfo = {
