@@ -570,25 +570,32 @@ export class OddsCollector {
         const horse2 = parseInt(horse2Text);
 
         if (!isNaN(horse2)) {
-          // span.minとspan.maxから値を取得
-          const $odds = $row.find('td.odds');
-          const oddsMinText = $odds.find('span.min').text().trim();
-          const oddsMaxText = $odds.find('span.max').text().trim();
+          // 取消馬の判定
+          const isCanceled = $row.find('td.odds_cancel').length > 0;
           
-          if (oddsMinText && oddsMaxText) {
-            const oddsMin = parseFloat(oddsMinText.replace(/,/g, ''));
-            const oddsMax = parseFloat(oddsMaxText.replace(/,/g, ''));
+          if (!isCanceled) {
+            // span.minとspan.maxから値を取得
+            const $odds = $row.find('td.odds');
+            const oddsMinText = $odds.find('span.min').text().trim();
+            const oddsMaxText = $odds.find('span.max').text().trim();
             
-            if (!isNaN(oddsMin) && !isNaN(oddsMax)) {
-              wideOddsData.push({
-                horse1,
-                horse2,
-                oddsMin,
-                oddsMax,
-                timestamp: new Date(),
-                raceId
-              });
+            if (oddsMinText && oddsMaxText) {
+              const oddsMin = parseFloat(oddsMinText.replace(/,/g, ''));
+              const oddsMax = parseFloat(oddsMaxText.replace(/,/g, ''));
+              
+              if (!isNaN(oddsMin) && !isNaN(oddsMax)) {
+                wideOddsData.push({
+                  horse1,
+                  horse2,
+                  oddsMin,
+                  oddsMax,
+                  timestamp: new Date(),
+                  raceId
+                });
+              }
             }
+          } else {
+            console.log(`Skipping canceled wide odds for horses ${horse1}-${horse2}`);
           }
         }
       });

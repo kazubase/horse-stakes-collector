@@ -505,17 +505,17 @@ class DailyOddsCollector {
       // 収集開始時刻の設定（重賞レースの場合）
       let collectionStartTimeUTC: Date | null = null;
       if (race.isGrade) {
-        // 重賞レースの場合、前日9:00 JSTから収集開始
+        // 重賞レースの場合、前日10:00 JSTから収集開始
         // 日本時間で計算してからUTCに変換する方法に変更
         
         // 1. レース開始時刻をJSTに変換
         const raceStartTimeJST = new Date(raceStartTimeUTC.getTime() + JST_OFFSET);
         console.log('Debug - raceStartTimeJST:', raceStartTimeJST.toISOString());
         
-        // 2. 前日の9:00 JSTを設定
+        // 2. 前日の10:00 JSTを設定
         const collectionStartTimeJST = new Date(raceStartTimeJST);
         collectionStartTimeJST.setDate(collectionStartTimeJST.getDate() - 1);
-        collectionStartTimeJST.setHours(9, 0, 0, 0); 
+        collectionStartTimeJST.setHours(10, 0, 0, 0); 
         console.log('Debug - collectionStartTimeJST:', collectionStartTimeJST.toISOString());
         
         // 3. JSTからUTCに変換
