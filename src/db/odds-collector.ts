@@ -267,7 +267,12 @@ export class OddsCollector {
       // 馬券種別タブへの遷移
       const config = this.betTypes[betType];
       if (betType !== 'tanpuku') { // 単複は最初のタブなのでスキップ
-        await page.getByRole('link', { name: config.tabName }).click();
+        if (betType === 'wide') {
+          // ワイドオッズの場合は、onclick属性を持つリンクを探す
+          await page.locator('a[onclick*="accessO.html"]').filter({ hasText: 'ワイド' }).click();
+        } else {
+          await page.getByRole('link', { name: config.tabName }).click();
+        }
         await page.waitForLoadState('networkidle');
       }
 
@@ -570,32 +575,25 @@ export class OddsCollector {
         const horse2 = parseInt(horse2Text);
 
         if (!isNaN(horse2)) {
-          // 取消馬の判定
-          const isCanceled = $row.find('td.odds_cancel').length > 0;
+          // span.minとspan.maxから値を取得
+          const $odds = $row.find('td.odds');
+          const oddsMinText = $odds.find('span.min').text().trim();
+          const oddsMaxText = $odds.find('span.max').text().trim();
           
-          if (!isCanceled) {
-            // span.minとspan.maxから値を取得
-            const $odds = $row.find('td.odds');
-            const oddsMinText = $odds.find('span.min').text().trim();
-            const oddsMaxText = $odds.find('span.max').text().trim();
+          if (oddsMinText && oddsMaxText) {
+            const oddsMin = parseFloat(oddsMinText.replace(/,/g, ''));
+            const oddsMax = parseFloat(oddsMaxText.replace(/,/g, ''));
             
-            if (oddsMinText && oddsMaxText) {
-              const oddsMin = parseFloat(oddsMinText.replace(/,/g, ''));
-              const oddsMax = parseFloat(oddsMaxText.replace(/,/g, ''));
-              
-              if (!isNaN(oddsMin) && !isNaN(oddsMax)) {
-                wideOddsData.push({
-                  horse1,
-                  horse2,
-                  oddsMin,
-                  oddsMax,
-                  timestamp: new Date(),
-                  raceId
-                });
-              }
+            if (!isNaN(oddsMin) && !isNaN(oddsMax)) {
+              wideOddsData.push({
+                horse1,
+                horse2,
+                oddsMin,
+                oddsMax,
+                timestamp: new Date(),
+                raceId
+              });
             }
-          } else {
-            console.log(`Skipping canceled wide odds for horses ${horse1}-${horse2}`);
           }
         }
       });
