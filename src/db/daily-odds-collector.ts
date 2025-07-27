@@ -11,6 +11,7 @@ import schedule from 'node-schedule';
 import url from 'url';
 import { sql } from 'drizzle-orm';
 import { Race } from './schema.js';
+import http from 'http';
 
 interface RaceInfo {
   id: number;
@@ -1539,4 +1540,20 @@ async function runWithAutoRestart() {
 // ESモジュール用のエントリーポイントチェック
 if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
   runWithAutoRestart().catch(console.error);
-} 
+}
+
+// ヘルスチェック用のHTTPサーバーを起動
+const PORT = process.env.PORT || 8080;
+const server = http.createServer((req, res) => {
+  if (req.url === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK');
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`Health check server listening on port ${PORT}`);
+}); 
